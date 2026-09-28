@@ -1,0 +1,19 @@
+{
+    "female_average": {
+        "body": "base\\characters\\common\\base_bodies\\woman_average\\t0_000_wa__c_base_full0.mesh",
+        "legs": "base\\characters\\common\\base_bodies\\woman_average\\l0_000_wa__c_base_full0.mesh",
+        "feet": "base\\characters\\common\\base_bodies\\woman_average\\s0_000_wa__c_base_full0.mesh"
+    },
+    "male_average": {
+        "body": "base\\characters\\common\\base_bodies\\man_average\\t0_001_ma__c_base_full0.mesh",
+        "legs": "base\\characters\\common\\base_bodies\\man_average\\l0_001_ma__c_base_full0.mesh",
+        "feet": "base\\characters\\common\\base_bodies\\man_average\\s0_001_ma__c_base_full0.mesh",
+        "genitals": "base\\busyvampire\\naughty_wishes_core\\naughty_wishes_main\\meshes\\naughty_wishes_soft_m_base_body.mesh"
+    },
+    "male_big": {
+        "body": "base\\characters\\common\\base_bodies\\man_big\\t0_002_mb__c_base_full0.mesh",
+        "legs": "base\\characters\\common\\base_bodies\\man_big\\l0_002_mb__c_base_full0.mesh",
+        "feet": "base\\characters\\common\\base_bodies\\man_big\\s0_002_mb__c_base_full0.mesh",
+        "genitals": "base\\busyvampire\\naughty_wishes_core\\naughty_wishes_main\\meshes\\naughty_wishes_soft_m_base_body.mesh"
+    }
+}

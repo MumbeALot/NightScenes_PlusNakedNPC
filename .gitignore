@@ -1,0 +1,10 @@
+# Dev-only manifest generator -- reads the explicit mod's AMM Collabs folder and
+# writes anims/explicit_manifest.lua, which IS tracked. Not shipped to users.
+tools/
+
+# User-contributed forks kept locally for reference while merging. Full copies
+# of the mod plus ~100 audio files; not part of the mod itself.
+contrib/
+
+# Mod Organizer bookkeeping, not part of the mod
+meta.ini
