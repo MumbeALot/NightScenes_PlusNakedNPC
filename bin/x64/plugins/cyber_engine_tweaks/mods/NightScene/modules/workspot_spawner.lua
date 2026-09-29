@@ -366,6 +366,44 @@ function WorkspotSpawner.PlayAll()
     end
 end
 
+--- Re-point the actors already in the workspot at whatever clips the scene now
+--- specifies, after the animation or stage changed. No respawn: the workspot
+--- entity, the V clone and any explicit stand-ins all stay exactly as they are,
+--- which is the whole point -- a teardown/rebuild would be visible as a hitch.
+function WorkspotSpawner.SwitchAnimations()
+    if not WorkspotSpawner.workspotEntity or WorkspotSpawner.polling then
+        -- Still starting up. PlayAll hasn't run yet and will pick up the
+        -- current clips when it does, so there's nothing to re-point.
+        return false
+    end
+
+    local sys = Game.GetWorkspotSystem()
+
+    for i = 0, WorkspotSpawner.actorCount - 1 do
+        pcall(function()
+            local isPlayer = Game['NightSceneAPI::IsActiveSceneActorPlayer;Int32'](i)
+            local realActor = Game['NightSceneAPI::GetActiveSceneActor;Int32'](i)
+
+            -- Same substitution PlayAll makes: clone for the player, explicit
+            -- stand-in for a swapped NPC, otherwise the NPC itself.
+            local actor
+            if isPlayer then
+                actor = WorkspotSpawner.vClone or realActor
+            else
+                actor = ExplicitSwap.GetStandIn(realActor) or realActor
+            end
+
+            local animNameStr = Game['NightSceneAPI::GetActiveSceneAnimNameStr;Int32'](i)
+            if actor and animNameStr and animNameStr ~= "" then
+                sys:SendJumpToAnimEnt(actor, CName.new(animNameStr), true)
+                print("[NightScene] Spawner: [" .. tostring(i) .. "] switched -> '" .. animNameStr .. "'")
+            end
+        end)
+    end
+
+    return true
+end
+
 function WorkspotSpawner.Cleanup()
     WorkspotSpawner.polling = false
     local workspotSys = Game.GetWorkspotSystem()

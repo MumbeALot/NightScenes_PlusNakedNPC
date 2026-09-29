@@ -84,6 +84,45 @@ public abstract class NightSceneAPI {
         NightSceneServices.Get().SceneManager().PreviousStage();
     }
 
+    /// Switch to another animation without stopping the scene. direction is
+    /// +1 / -1. Returns false when nothing compatible is available.
+    public static func CycleAnimation(direction: Int32) -> Bool {
+        return NightSceneServices.Get().SceneManager().CycleAnimation(direction);
+    }
+
+    /// Read-and-clear flag: true when the animation or stage changed and the
+    /// Lua side needs to re-point the existing actors at the new clips.
+    public static func ConsumePendingWorkspotUpdate() -> Bool {
+        return NightSceneServices.Get().SceneManager().ConsumePendingWorkspotUpdate();
+    }
+
+    /// Display name of the running animation ("" when no scene is active).
+    public static func GetActiveSceneAnimationLabel() -> String {
+        let scene = NightSceneServices.Get().SceneManager().GetActiveScene();
+        if IsDefined(scene) && IsDefined(scene.animDef) {
+            return scene.animDef.displayName;
+        }
+        return "";
+    }
+
+    /// 1-based stage number of the running scene (0 when none is active).
+    public static func GetActiveSceneStageNumber() -> Int32 {
+        let scene = NightSceneServices.Get().SceneManager().GetActiveScene();
+        if IsDefined(scene) {
+            return scene.currentStageIndex + 1;
+        }
+        return 0;
+    }
+
+    /// Total stages in the running scene (0 when none is active).
+    public static func GetActiveSceneStageCount() -> Int32 {
+        let scene = NightSceneServices.Get().SceneManager().GetActiveScene();
+        if IsDefined(scene) {
+            return scene.GetStageCount();
+        }
+        return 0;
+    }
+
     /// Set animation playback speed.
     public static func SetSpeed(speed: Float) -> Void {
         NightSceneServices.Get().SceneManager().SetSpeed(speed);

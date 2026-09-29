@@ -54,6 +54,11 @@ public class NightSceneManager extends IScriptable {
     // to tell the Lua side it needs to spawn the workspot entity.
     private let m_pendingWorkspotSpawn: Bool;
 
+    // Set when the animation or stage changes mid-scene, to tell the Lua side
+    // to re-point the EXISTING actors at the new clips. Distinct from
+    // m_pendingWorkspotSpawn, which means "build the whole scene from scratch".
+    private let m_pendingWorkspotUpdate: Bool;
+
     // Game instance reference
     private let m_gameInstance: GameInstance;
 
@@ -97,6 +102,13 @@ public class NightSceneManager extends IScriptable {
 
     public func HasPendingWorkspotSpawn() -> Bool {
         return this.m_pendingWorkspotSpawn;
+    }
+
+    /// Read-and-clear: CET polls this after an animation or stage change.
+    public func ConsumePendingWorkspotUpdate() -> Bool {
+        let pending = this.m_pendingWorkspotUpdate;
+        this.m_pendingWorkspotUpdate = false;
+        return pending;
     }
 
     // ============================================================
@@ -178,6 +190,7 @@ public class NightSceneManager extends IScriptable {
         }
 
         this.m_activeScene = scene;
+        this.m_pendingWorkspotUpdate = false;
 
         LogChannel(n"NightScene", "Starting scene " + ToString(scene.sceneId) + " with animation: " + animDef.id);
 
@@ -384,6 +397,13 @@ public class NightSceneManager extends IScriptable {
 
         let nextIndex = this.m_activeScene.currentStageIndex + 1;
         this.AdvanceToStage(nextIndex);
+
+        // Only flag a re-point if a stage actually remained -- past the last
+        // stage AdvanceToStage finishes the scene, and there is nothing left
+        // to point the actors at.
+        if this.IsSceneActive() {
+            this.m_pendingWorkspotUpdate = true;
+        }
     }
 
     /// Manually go back to the previous stage.
@@ -397,7 +417,93 @@ public class NightSceneManager extends IScriptable {
         let prevIndex = this.m_activeScene.currentStageIndex - 1;
         if prevIndex >= 0 {
             this.AdvanceToStage(prevIndex);
+            this.m_pendingWorkspotUpdate = true;
         }
+    }
+
+    /// Swap the active animation without tearing the scene down.
+    ///
+    /// Only animations that share the current one's workspot entity AND
+    /// component can be swapped in, because the actors are already standing in
+    /// that workspot -- anything else would need a full respawn. Pairing
+    /// families (MF / FF / MBF) are never crossed either: those differ in which
+    /// rig occupies which slot, so switching across them would hand an actor a
+    /// clip built for a different skeleton.
+    ///
+    /// Returns false when there's nothing compatible to switch to.
+    public func CycleAnimation(direction: Int32) -> Bool {
+        if !this.IsSceneActive() || direction == 0 {
+            return false;
+        }
+
+        let scene = this.m_activeScene;
+        if !IsDefined(scene.animDef) || !IsDefined(scene.animDef.workspot) {
+            return false;
+        }
+
+        let candidates = this.m_registry.GetByPack(scene.animDef.packName);
+        let compatible: array<ref<NightSceneAnimationDef>>;
+        let i: Int32 = 0;
+        while i < ArraySize(candidates) {
+            let candidate = candidates[i];
+            if candidate.enabled && candidate.actorCount == scene.animDef.actorCount
+                && candidate.useWorkspot && IsDefined(candidate.workspot)
+                && Equals(candidate.workspot.entityPath, scene.animDef.workspot.entityPath)
+                && Equals(candidate.workspot.componentName, scene.animDef.workspot.componentName)
+                && NightSceneManager.SamePairingFamily(scene.animDef.id, candidate.id) {
+                ArrayPush(compatible, candidate);
+            }
+            i += 1;
+        }
+
+        if ArraySize(compatible) < 2 {
+            return false;
+        }
+
+        let current: Int32 = -1;
+        i = 0;
+        while i < ArraySize(compatible) {
+            if Equals(compatible[i].id, scene.animDef.id) {
+                current = i;
+                break;
+            }
+            i += 1;
+        }
+        if current < 0 {
+            return false;
+        }
+
+        let next: Int32 = current + direction;
+        if next >= ArraySize(compatible) {
+            next = 0;
+        }
+        if next < 0 {
+            next = ArraySize(compatible) - 1;
+        }
+
+        scene.animDef = compatible[next];
+        scene.currentStageIndex = 0;
+        scene.stageStartTime = EngineTime.ToFloat(GameInstance.GetSimTime(this.m_gameInstance));
+        this.m_pendingWorkspotUpdate = true;
+
+        LogChannel(n"NightScene", "Animation switched -> " + scene.animDef.id);
+        return true;
+    }
+
+    /// Do two animation IDs belong to the same pairing family? IDs are built by
+    /// the AMM loader as "<pack>_<family>_<name>", so the family marker is an
+    /// infix. An ID with no marker only matches itself.
+    public static func SamePairingFamily(currentId: String, candidateId: String) -> Bool {
+        if StrContains(currentId, "_mf_") {
+            return StrContains(candidateId, "_mf_");
+        }
+        if StrContains(currentId, "_ff_") {
+            return StrContains(candidateId, "_ff_");
+        }
+        if StrContains(currentId, "_mbf_") {
+            return StrContains(candidateId, "_mbf_");
+        }
+        return Equals(candidateId, currentId);
     }
 
     /// Adjust the playback speed of the current scene.
@@ -487,6 +593,7 @@ public class NightSceneManager extends IScriptable {
         // Reset state
         scene.state = NightSceneState.Idle;
         this.m_activeScene = null;
+        this.m_pendingWorkspotUpdate = false;
 
         LogChannel(n"NightScene", "Scene cleanup complete");
     }

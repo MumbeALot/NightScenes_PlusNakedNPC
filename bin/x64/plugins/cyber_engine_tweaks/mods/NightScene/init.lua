@@ -148,6 +148,14 @@ registerForEvent("onUpdate", function(deltaTime)
         end
     end)
 
+    -- Animation or stage changed mid-scene: re-point the actors already in the
+    -- workspot at the new clips instead of rebuilding the scene.
+    pcall(function()
+        if Game['NightSceneAPI::ConsumePendingWorkspotUpdate;']() then
+            Spawner.SwitchAnimations()
+        end
+    end)
+
     -- Auto-cleanup: detect when Redscript scene ends (auto-advance timer expired)
     -- and trigger Lua cleanup if spawner still has active entities
     pcall(function()
@@ -274,6 +282,30 @@ registerHotkey("ns_cancel_scene", "NightScene: Cancel Scene", function()
             print("[NightScene] Scene stopped")
         end
     end)
+end)
+
+-- Switch to the next/previous compatible animation WITHOUT restarting the
+-- scene. Only animations sharing the current workspot entity and pairing
+-- family are offered, so the actors can stay where they are.
+local function cycleAnimation(direction)
+    if not isInGame then return end
+
+    pcall(function()
+        if not Game['NightSceneAPI::IsSceneActive;']() then return end
+
+        local switched = Game['NightSceneAPI::CycleAnimation;Int32'](direction)
+        if not switched then
+            print("[NightScene] No other compatible animation to switch to")
+        end
+    end)
+end
+
+registerHotkey("ns_next_anim", "NightScene: Next Animation", function()
+    cycleAnimation(1)
+end)
+
+registerHotkey("ns_prev_anim", "NightScene: Previous Animation", function()
+    cycleAnimation(-1)
 end)
 
 -- Next stage
