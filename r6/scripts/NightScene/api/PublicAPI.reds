@@ -586,6 +586,10 @@ public abstract class NightSceneAPI {
         NightSceneServices.Get().SceneManager().GetConfig().enabled = value;
     }
 
+    public static func SetDebugMode(value: Bool) -> Void {
+        NightSceneServices.Get().SceneManager().GetConfig().debugMode = value;
+    }
+
     public static func SetDefeatEnabled(value: Bool) -> Void {
         NightSceneServices.Get().SceneManager().GetConfig().defeatEnabled = value;
     }

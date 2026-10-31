@@ -11,6 +11,7 @@ local Config = {}
 -- Default configuration values (mirrors NightSceneConfig.reds)
 Config.defaults = {
     enabled = true,
+    debugMode = false,           -- For at least trace log functions
     defaultCameraMode = 0,       -- 0=FirstPerson, 1=ThirdPerson, 2=Cinematic, 3=Free
     keepHairInFP = false,        -- true = keep the clone's hair visible in first person
     defeatEnabled = true,
@@ -82,17 +83,17 @@ function Config.Load()
             -- Merge loaded values with defaults (so new config keys get default values)
             Config.current = Config.MergeWithDefaults(data)
             if migrated then
-                print("[NightScene] Configuration migrated from the old nested path")
+                NightScene.Print("[NightScene] Configuration migrated from the old nested path")
                 Config.Save()
             else
-                print("[NightScene] Configuration loaded from file")
+                NightScene.Print("[NightScene] Configuration loaded from file")
             end
         else
-            print("[NightScene] WARN: Config file corrupted, using defaults")
+            NightScene.Print("[NightScene] WARN: Config file corrupted, using defaults")
             Config.current = Config.DeepCopy(Config.defaults)
         end
     else
-        print("[NightScene] No config file found, creating defaults")
+        NightScene.Print("[NightScene] No config file found, creating defaults")
         Config.current = Config.DeepCopy(Config.defaults)
         Config.Save()
     end
@@ -103,17 +104,23 @@ end
 
 --- Save current configuration to file.
 function Config.Save()
-    local content = json.encode(Config.current)
-    -- io.open returns the reason as its second result. The previous version
-    -- re-opened the file to print it, which leaked a handle and printed the
-    -- file object or nil -- never the actual error.
-    local file, err = io.open(Config.filePath, "w")
-    if file then
-        file:write(content)
-        file:close()
-        print("[NightScene] Configuration saved")
+    local content = NightScene.EncodeSorted(Config.current)
+    -- NightScene.DebugTrace("[NightScene] Save sorted: ", content)
+
+    if content then
+        -- io.open returns the reason as its second result. The previous version
+        -- re-opened the file to print it, which leaked a handle and printed the
+        -- file object or nil -- never the actual error.
+        local file, err = io.open(Config.filePath, "w")
+        if file then
+            file:write(content)
+            file:close()
+            NightScene.Print("[NightScene] Configuration saved")
+        else
+            NightScene.Print("[NightScene] ERROR: Could not save config file: " .. tostring(err))
+        end
     else
-        print("[NightScene] ERROR: Could not save config file: " .. tostring(err))
+        NightScene.Print("[NightScene] ERROR: Could not encode the config file")
     end
 
     -- Push updated config to Redscript framework
@@ -124,6 +131,7 @@ end
 function Config.SyncToRedscript()
     local success, err = pcall(function()
         Game['NightSceneAPI::SetEnabled;Bool'](Config.current.enabled)
+        Game['NightSceneAPI::SetDebugMode;Bool'](Config.current.debugMode)
         Game['NightSceneAPI::SetDefeatEnabled;Bool'](Config.current.defeatEnabled)
         Game['NightSceneAPI::SetDefeatHealthThreshold;Float'](Config.current.defeatHealthThreshold)
         Game['NightSceneAPI::SetNpcInteractionEnabled;Bool'](Config.current.npcInteractionEnabled)
@@ -144,11 +152,11 @@ function Config.SyncToRedscript()
         -- Commented out: SyncToRedscript now runs every frame the settings menu
         -- is open (so changes apply live), which spammed the log dozens of
         -- times per second.
-        -- print("[NightScene] Config synced to Redscript")
+        -- NightScene.Print("[NightScene] Config synced to Redscript")
     end)
 
     if not success then
-        print("[NightScene] WARN: Could not sync config to Redscript: " .. tostring(err))
+        NightScene.Print("[NightScene] WARN: Could not sync config to Redscript: " .. tostring(err))
     end
 end
 
@@ -180,7 +188,7 @@ end
 function Config.Reset()
     Config.current = Config.DeepCopy(Config.defaults)
     Config.Save()
-    print("[NightScene] Configuration reset to defaults")
+    NightScene.Print("[NightScene] Configuration reset to defaults")
 end
 
 --- Get a config value by key.

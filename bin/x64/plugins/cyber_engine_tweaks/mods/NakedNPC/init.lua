@@ -27,7 +27,7 @@
 -- Mesh swaps ONLY work during OnRequestComponents (component loading phase).
 -- This two-step cycle is the same pattern CET NPC Body Tweaks and AMM use.
 
-local modVersion = "0.2.9"
+local modVersion = "0.2.9.1L"
 local modName = "NakedNPC"
 
 local Config = require("modules/config")
@@ -100,10 +100,10 @@ local function initiateNakedCycle(entity)
         timestamp = os.clock()
     }
 
-    print("[NakedNPC] Initiating naked cycle for: " .. currentApp .. " (key=" .. key .. ")")
+    NakedNPC.Print("[NakedNPC] Initiating naked cycle for: " .. currentApp .. " (key=" .. key .. ")")
 
     pendingNaked[key].step = 1
-    -- print("[NakedNPC] Deferred firing ScheduleAppearanceChange: " .. d.appName .. " for key=" .. (d.restoreKey or "?"))
+    NakedNPC.Trace("[NakedNPC] Deferred firing ScheduleAppearanceChange: " .. d.appName .. " for key=" .. (d.restoreKey or "?"))
     entity:PrefetchAppearanceChange(CName.new("Cycle"))
     entity:ScheduleAppearanceChange(CName.new("Cycle"))
 
@@ -121,13 +121,13 @@ local function initiateRestoreCycle(entity)
 
     local originalApp = NPCTracker.GetOriginalAppearance(eid)
     if not originalApp or originalApp == "" or originalApp == "None" then
-        print("[NakedNPC] Restore: no saved appearance for " .. key)
+        NakedNPC.Print("[NakedNPC] Restore: no saved appearance for " .. key)
         -- Fallback: just untrack, game will handle appearance naturally
         NPCTracker.Untrack(eid)
         return false
     end
 
-    print("[NakedNPC] Initiating restore cycle for: " .. originalApp .. " (key=" .. key .. ")")
+    NakedNPC.Print("[NakedNPC] Initiating restore cycle for: " .. originalApp .. " (key=" .. key .. ")")
 
     -- Untrack BEFORE scheduling so the hook doesn't try to restore again
     NPCTracker.Untrack(eid)
@@ -216,7 +216,7 @@ function NakedNPC.StripForScene(entity, genitalState)
         if genitalState then
             pendingGenitalState[key] = genitalState
         end
-        print("[NakedNPC] StripForScene: cycle already in progress for " .. key)
+        NakedNPC.Print("[NakedNPC] StripForScene: cycle already in progress for " .. key)
         return true
     end
 
@@ -229,7 +229,7 @@ function NakedNPC.StripForScene(entity, genitalState)
     -- StripEntity tracks the NPC which would block the cycle from starting
     local cycleStarted = initiateNakedCycle(entity)
     if not cycleStarted then
-        print("[NakedNPC] StripForScene: cycle failed to start for " .. key .. " (appearance empty or being restored?)")
+        NakedNPC.Print("[NakedNPC] StripForScene: cycle failed to start for " .. key .. " (appearance empty or being restored?)")
         -- Only fall back to StripEntity if truly unable to cycle
         -- Don't track via NPCTracker here to avoid blocking future cycle attempts
         return false
@@ -277,7 +277,7 @@ function NakedNPC.RestoreFromScene(entity)
             isRestore = true,
             restoreKey = key
         })
-        print("[NakedNPC] RestoreFromScene: two-step restore -> " .. originalApp)
+        NakedNPC.Print("[NakedNPC] RestoreFromScene: two-step restore -> " .. originalApp)
     end
 
     return true
@@ -314,7 +314,7 @@ function NakedNPC.UnequipPlayer()
 
     if system then
         system:UnequipPlayerClothing()
-        print("[NakedNPC] Player clothing unequipped for Clone V")
+        NakedNPC.Print("[NakedNPC] Player clothing unequipped for Clone V")
         return true
     end
     return false
@@ -331,7 +331,7 @@ function NakedNPC.ReequipPlayer()
 
     if system then
         system:ReequipPlayerClothing()
-        print("[NakedNPC] Player clothing re-equipped")
+        NakedNPC.Print("[NakedNPC] Player clothing re-equipped")
         return true
     end
     return false
@@ -369,13 +369,138 @@ end
 
 function NakedNPC.debugMode() return Config.Get("debugMode") end
 
+--------------------------------------------------------------------
+-- A library of sorts of useful functions . Where should it all go ?
+--------------------------------------------------------------------
+
+function NakedNPC.DebugPrint(...)
+	if debug and debug.print then
+		debug.print(...)
+		if debug.log then
+			debug.log(...)
+		end
+	end
+end
+
+function NakedNPC.DebugLog(...)
+	if debug and debug.log then
+		debug.log(...)
+	end
+end
+
+function NakedNPC.DebugTrace(...)
+	if debug and debug.log and NakedNPC.debugMode() then
+		debug.log(...)
+    -- else
+	--	debug.log("debugMode off: " .. ...)
+	end
+end
+
+function NakedNPC.Print(...)
+	print(...)
+	spdlog.info(...)
+end
+
+function NakedNPC.Log(...)
+	spdlog.info(...)
+end
+
+function NakedNPC.Trace(...)
+	if NakedNPC.debugMode() then
+		spdlog.info(...)
+	end
+end
+
+function NakedNPC.TableSize(table)
+	local result = 0
+	if table then
+		if type(table) == 'table' then
+	        for _, value in pairs(table) do
+	            result = result + 1
+	        end
+		else
+			result = -1
+		end
+	else
+		result = 0
+	end
+	-- NakedNPC.DebugTrace("[NakedNPC] TableSize=" .. tostring(result))
+	return result
+end
+
+-- duplicated from anim_toggles.lua and adpted for tables with non numeric keys.
+
+local function pairsByKeys(t, f)
+    local a = {}
+    for n in pairs(t) do table.insert(a, n) end
+    table.sort(a, f)
+    local i = 0      -- iterator variable
+    local iter = function ()   -- iterator function
+        i = i + 1
+        if a[i] == nil then return nil
+        else return a[i], t[a[i]]
+        end
+    end
+    return iter
+end
+
+-- Expect table contains only table, string and numbers as values...
+
+function NakedNPC.TableSort(list)
+    local i = 0
+    local parts = {}
+    for key, value in pairsByKeys(list) do
+        i = i + 1
+        if type(value) ~= 'table' then
+            if type(value) == 'string' then
+                parts[i] = '"' .. tostring(key) .. '": "' .. tostring(value) .. '"'
+            else
+                parts[i] = '"' .. tostring(key) .. '": ' .. tostring(value)
+            end
+        else
+            local sub = {}
+            sub = NakedNPC.TableSort(value)
+            parts[i] = '"' .. tostring(key) .. '": {\n\t\t' .. table.concat(sub, ',\n\t\t') .. '\n\t}'
+        end
+        -- NakedNPC.Trace("[NakedNPC] TableSort parts[" .. tostring(i) .. "]='" .. tostring(parts[i]) .. "'")
+    end
+    return parts
+end
+
+function NakedNPC.EncodeSorted(list)
+    if not list then return nil end
+    -- NakedNPC.DebugTrace("[NakedNPC] EncodeSorted list ", list, " of size ", NakedNPC.TableSize(list))
+
+    -- Written by hand rather than json.encode: that puts all ids on a single line,
+    -- which is unreadable and undiffable if you ever want to
+    -- edit the file directly. Sorted so entries stay put between saves.
+
+    local parts = NakedNPC.TableSort(list)
+    -- NakedNPC.DebugTrace("[NakedNPC] EncodeSorted parts ", parts)
+
+    local content = "{\n\t" .. table.concat(parts, ",\n\t") .. "\n}\n"
+    -- NakedNPC.DebugTrace("[NakedNPC] EncodeSorted content ", content)
+
+    -- Do not write an empty config, it has to be an error
+    if NakedNPC.TableSize(parts) == 0 then
+        -- NakedNPC.Trace("[NakedNPC] EncodeSorted ERROR: Could not sort and encode the config file")
+        content = nil 
+    end
+	return content
+end
+
 -- -------------------------------------------------------
 --  LIFECYCLE
 -- -------------------------------------------------------
 
 registerForEvent("onInit", function()
-    print("[NakedNPC] Initializing v" .. modVersion)
+    NakedNPC.Log  ("")
+    NakedNPC.Log  ("========================================")
+    NakedNPC.Print("[NakedNPC] Initializing v" .. modVersion)
+    NakedNPC.Log  ("========================================")
 
+	dofile("debug.lua")
+	
     Config.Load()
     BodyManager.Init()
     NPCTracker.Init()
@@ -383,11 +508,11 @@ registerForEvent("onInit", function()
     UI.Init(Config, NPCTracker, Stripper, BodyManager, modVersion)
 
     initialized = true
-    print("[NakedNPC] CET module initialized")
+    NakedNPC.Print("[NakedNPC] CET module initialized")
     if Config.Get("enabled") then
-        print("[NakedNPC] enabled")
+        NakedNPC.Print("[NakedNPC] enabled")
     else
-        print("[NakedNPC] disabled")
+        NakedNPC.Print("[NakedNPC] disabled")
     end
 
     -- Sync config when game loads
@@ -398,9 +523,9 @@ registerForEvent("onInit", function()
             system:SetDebugMode(Config.Get("debugMode"))
             system:SetMeshSwapEnabled(Config.Get("meshSwapEnabled"))
             Stripper.SetSystem(system)
-            print("[NakedNPC] Synced config to Redscript system")
+            NakedNPC.Print("[NakedNPC] Synced config to Redscript system")
         else
-            print("[NakedNPC] WARNING: NakedNPCSystem not found")
+            NakedNPC.Print("[NakedNPC] WARNING: NakedNPCSystem not found")
         end
     end)
 
@@ -431,9 +556,7 @@ registerForEvent("onInit", function()
             if NPCTracker.IsTrackedByID(eid) then return end
 
             if system and system:CheckHasRealNakedAppearance(self) then
-                if Config.Get("debugMode") then
-                    print("[NakedNPC] PASS-THROUGH: Real _naked for " .. nameStr)
-                end
+                NakedNPC.Trace("[NakedNPC] PASS-THROUGH: Real _naked for " .. nameStr)
                 return
             end
 
@@ -446,9 +569,7 @@ registerForEvent("onInit", function()
             -- Don't restore if this is our own deferred firing the original appearance back
             local originalApp = NPCTracker.GetOriginalAppearance(eid)
             if originalApp and nameStr == originalApp then
-                if Config.Get("debugMode") then
-                    print("[NakedNPC] Skipping restore — deferred original appearance firing")
-                end
+                NakedNPC.Trace("[NakedNPC] Skipping restore — deferred original appearance firing")
                 return
             end
             initiateRestoreCycle(self)
@@ -466,7 +587,7 @@ registerForEvent("onInit", function()
 
         -- SKIP: entity is being restored — do NOT re-strip
         if pendingRestore[key] then
-            print("[NakedNPC] OnRequestComponents: skipping (restore in progress for " .. key .. ")")
+            NakedNPC.Print("[NakedNPC] OnRequestComponents: skipping (restore in progress for " .. key .. ")")
             pendingRestore[key] = nil
             return
         end
@@ -474,7 +595,7 @@ registerForEvent("onInit", function()
         local pending = pendingNaked[key]
         if not pending then return end
 
-        print("[NakedNPC] OnRequestComponents fired (key=" .. key .. " step=" .. pending.step .. ")")
+        NakedNPC.Print("[NakedNPC] OnRequestComponents fired (key=" .. key .. " step=" .. pending.step .. ")")
 
         -- Three reloads, and only the last one matters. "Cycle" resolves back
         -- to the NPC's own appearance, so scheduling the original after it is
@@ -485,7 +606,7 @@ registerForEvent("onInit", function()
         -- appearance list the game picked for that unknown name: an NPC in
         -- outfit 2 turning up in outfit 3 the moment the scene started.
         if pending.step == 1 then
-            print("[NakedNPC] OnRequestComponents step 1: moving off " .. pending.originalAppearance)
+            NakedNPC.Print("[NakedNPC] OnRequestComponents step 1: moving off " .. pending.originalAppearance)
             pendingNaked[key].step = 2
             pendingNaked[key].timestamp = os.clock()
 
@@ -498,7 +619,7 @@ registerForEvent("onInit", function()
         end
 
         if pending.step == 2 then
-            print("[NakedNPC] OnRequestComponents step 2: scheduling back to " .. pending.originalAppearance)
+            NakedNPC.Print("[NakedNPC] OnRequestComponents step 2: scheduling back to " .. pending.originalAppearance)
             pendingNaked[key].step = 3
             pendingNaked[key].timestamp = os.clock()
 
@@ -542,13 +663,13 @@ registerForEvent("onInit", function()
                 return Game.NameToString(self:GetCurrentAppearanceName())
             end)
             if not okApp or wearing == "" then wearing = "<unknown>" end
-            print("[NakedNPC] OnRequestComponents step 3: applying mesh swaps, wearing "
+            NakedNPC.Print("[NakedNPC] OnRequestComponents step 3: applying mesh swaps, wearing "
                 .. wearing .. " (saved " .. pending.originalAppearance .. ")")
             local savedComponents = Stripper.StripDuringLoad(self, genitalState)
-            print("[NakedNPC] About to track NPC, savedComponents count=" .. #savedComponents)
+            NakedNPC.Print("[NakedNPC] About to track NPC, savedComponents count=" .. #savedComponents)
             NPCTracker.Track(self, pending.originalAppearance, savedComponents)
             
-            print("[NakedNPC] OnRequestComponents: naked processing complete")
+            NakedNPC.Print("[NakedNPC] OnRequestComponents: naked processing complete")
         end
     end)
 end)
@@ -582,7 +703,7 @@ registerForEvent("onUpdate", function(delta)
             elseif d.isStep3Timeout then
                 local pending = d.stepKey and pendingNaked[d.stepKey]
                 if pending and pending.step >= 3 then
-                    print("[NakedNPC] WARN: reload back to " .. pending.originalAppearance
+                    NakedNPC.Print("[NakedNPC] WARN: reload back to " .. pending.originalAppearance
                         .. " never arrived for " .. d.stepKey .. " -- NPC left dressed")
                     pendingNaked[d.stepKey] = nil
                     pendingGenitalState[d.stepKey] = nil
@@ -605,7 +726,7 @@ registerForEvent("onUpdate", function(delta)
                     -- still not the appearance we asked for, so retry either way.
                     if current ~= d.appName and d.attempt < MAX_RESTORE_ATTEMPTS then
                         settled = false
-                        print(string.format(
+                        NakedNPC.Print(string.format(
                             "[NakedNPC] Restore did not take (is '%s', want '%s') -- retry %d/%d",
                             current, d.appName, d.attempt + 1, MAX_RESTORE_ATTEMPTS))
                         d.entityRef:PrefetchAppearanceChange(CName.new(d.appName))
@@ -619,7 +740,7 @@ registerForEvent("onUpdate", function(delta)
                             attempt = d.attempt + 1
                         })
                     elseif current ~= d.appName then
-                        print("[NakedNPC] WARN: gave up restoring " .. d.appName
+                        NakedNPC.Print("[NakedNPC] WARN: gave up restoring " .. d.appName
                             .. " after " .. MAX_RESTORE_ATTEMPTS .. " attempts, NPC is wearing " .. current)
                     end
                 end
@@ -633,7 +754,7 @@ registerForEvent("onUpdate", function(delta)
 
             -- Handle normal schedule
             elseif d.entityRef and d.entityRef:IsA(CName.new("ScriptedPuppet")) then
-                print("[NakedNPC] Deferred schedule firing: " .. d.appName
+                NakedNPC.Print("[NakedNPC] Deferred schedule firing: " .. d.appName
                     .. (d.isRestore and " (RESTORE)" or ""))
                 d.entityRef:PrefetchAppearanceChange(CName.new(d.appName))
                 d.entityRef:ScheduleAppearanceChange(CName.new(d.appName))
@@ -661,7 +782,7 @@ registerForEvent("onUpdate", function(delta)
                     pendingRestore[d.restoreKey] = nil
                 end
                 if d.appName and d.appName ~= "" then
-                    print("[NakedNPC] Deferred schedule: entity no longer valid, skipping")
+                    NakedNPC.Print("[NakedNPC] Deferred schedule: entity no longer valid, skipping")
                 end
             end
         end
@@ -680,7 +801,7 @@ registerForEvent("onUpdate", function(delta)
         -- Clean up stale pending entries (older than 10 seconds)
         for k, v in pairs(pendingNaked) do
             if now - v.timestamp > 60.0 then
-                print("[NakedNPC] Cleaning stale pending naked entry: " .. k)
+                NakedNPC.Print("[NakedNPC] Cleaning stale pending naked entry: " .. k)
                 pendingNaked[k] = nil
             end
         end
@@ -711,7 +832,7 @@ end)
 
 registerForEvent("onShutdown", function()
     Config.Save()
-    print("[NakedNPC] Shutdown complete")
+    NakedNPC.Print("[NakedNPC] Shutdown complete")
 end)
 
 -- Return the public API table so other mods can access it via GetMod("NakedNPC")

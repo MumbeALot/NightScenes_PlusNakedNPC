@@ -13,40 +13,47 @@
 --   Place this folder at:
 --   <game_dir>/bin/x64/plugins/cyber_engine_tweaks/mods/NightScene/
 
+NightScene = {}
+
+function NightScene.Print(...)
+	print(...)
+	spdlog.info(...)
+end
+
 -- Load modules safely (a failing module must not block event registration)
 local ok, Config = pcall(require, "modules/config")
 if not ok then
-    print("[NightScene] ERROR loading config module: " .. tostring(Config))
+    NightScene.Print("[NightScene] ERROR loading config module: " .. tostring(Config))
     Config = { Load = function() end, Save = function() end, SyncToRedscript = function() end, current = { enabled = true } }
 end
 
 local ok2, UI = pcall(require, "modules/ui")
 if not ok2 then
-    print("[NightScene] ERROR loading UI module: " .. tostring(UI))
+    NightScene.Print("[NightScene] ERROR loading UI module: " .. tostring(UI))
     UI = { Init = function() end, OnDraw = function() end, ToggleConfigMenu = function() end, ToggleAnimBrowser = function() end, SetSceneControlsVisible = function() end, showSceneControls = false }
 end
 
 local ok3, AMMLoader = pcall(require, "modules/amm_loader")
 if not ok3 then
-    print("[NightScene] ERROR loading AMM loader module: " .. tostring(AMMLoader))
-    AMMLoader = { LoadAll = function() print("[NightScene] AMM Loader not available") end }
+    NightScene.Print("[NightScene] ERROR loading AMM loader module: " .. tostring(AMMLoader))
+    AMMLoader = { LoadAll = function() NightScene.Print("[NightScene] AMM Loader not available") end }
 end
 
 local ok4, Spawner = pcall(require, "modules/workspot_spawner")
 if not ok4 then
-    print("[NightScene] ERROR loading workspot spawner module: " .. tostring(Spawner))
+    NightScene.Print("[NightScene] ERROR loading workspot spawner module: " .. tostring(Spawner))
     Spawner = { SpawnAndPlay = function() end, Cleanup = function() end }
 end
 
 local ok5, AnimToggles = pcall(require, "modules/anim_toggles")
 if not ok5 then
-    print("[NightScene] ERROR loading anim toggles module: " .. tostring(AnimToggles))
+    NightScene.Print("[NightScene] ERROR loading anim toggles module: " .. tostring(AnimToggles))
     AnimToggles = { Load = function() end, Save = function() end, ApplyToRedscript = function() end, SetEnabled = function() end, IsEnabled = function() return true end, disabled = {} }
 end
 
 local ok6, ExplicitMatcher = pcall(require, "modules/explicit_matcher")
 if not ok6 then
-    print("[NightScene] ERROR loading explicit matcher module: " .. tostring(ExplicitMatcher))
+    NightScene.Print("[NightScene] ERROR loading explicit matcher module: " .. tostring(ExplicitMatcher))
     ExplicitMatcher = { FindForNPC = function() return nil, { reason = "matcher failed to load" } end, DebugLookAt = function() end }
 end
 
@@ -55,7 +62,7 @@ end
 -- orbit, cinematic presets, and free cam.
 local okCam, FPCamera = pcall(require, "modules/fp_camera")
 if not okCam then
-    print("[NightScene] ERROR loading camera module: " .. tostring(FPCamera))
+    NightScene.Print("[NightScene] ERROR loading camera module: " .. tostring(FPCamera))
     FPCamera = {
         Spawn = function() end, OnUpdate = function() end, HandleInput = function() end,
         CycleMode = function() end, NextPreset = function() end, SetMode = function() end,
@@ -67,7 +74,7 @@ end
 -- Mod version. Single source of truth: the UI is handed this rather than
 -- carrying its own copy, which is how the startup banner and the settings
 -- window both drifted to a stale "0.1.0".
-local modVersion = "0.2.9"
+local modVersion = "0.2.9.1L"
 
 -- Module-level state
 local isInitialized = false
@@ -82,15 +89,137 @@ local headCheckTick = 0
 -- Frames elapsed in the current scene, used to re-apply hiding periodically.
 local sceneTick = 0
 
+function NightScene.Enabled()   return Config.Get("enabled")   end
+function NightScene.DebugMode() return Config.Get("debugMode") end
+
+--------------------------------------------------------------------
+-- A library of sorts of useful functions . Where should it all go ?
+--------------------------------------------------------------------
+
+function NightScene.DebugPrint(...)
+	if debug and debug.print then
+		debug.print(...)
+		if debug.log then
+			debug.log(...)
+		end
+	end
+end
+
+function NightScene.DebugLog(...)
+	if debug and debug.log then
+		debug.log(...)
+	end
+end
+
+function NightScene.DebugTrace(...)
+	if debug and debug.log and NightScene.DebugMode() then
+		debug.log(...)
+    -- else
+	--	debug.log("debugMode off: " .. ...)
+	end
+end
+
+function NightScene.Log(...)
+	spdlog.info(...)
+end
+
+function NightScene.Trace(...)
+	if NightScene.DebugMode() then
+		spdlog.info(...)
+	end
+end
+
+function NightScene.TableSize(table)
+	local result = 0
+	if table then
+		if type(table) == 'table' then
+	        for _, value in pairs(table) do
+	            result = result + 1
+	        end
+		else
+        	NightScene.Print("[NightScene] TableSize type=" .. tostring(type(table)))
+			result = -1
+		end
+	else
+		result = 0
+	end
+	-- NightScene.Trace("[NightScene] TableSize=" .. tostring(result))
+	return result
+end
+
+-- duplicated from anim_toggles.lua and adpted for tables with non numeric keys.
+-- I don't know how to avoid duplication from NakedNPC also.
+
+local function pairsByKeys(t, f)
+    local a = {}
+    for n in pairs(t) do table.insert(a, n) end
+    table.sort(a, f)
+    local i = 0      -- iterator variable
+    local iter = function ()   -- iterator function
+        i = i + 1
+        if a[i] == nil then return nil
+        else return a[i], t[a[i]]
+        end
+    end
+    return iter
+end
+
+-- Expect table contains only table, string and numbers as values...
+
+function NightScene.TableSort(list)
+    local i = 0
+    local parts = {}
+    for key, value in pairsByKeys(list) do
+        i = i + 1
+        if type(value) ~= 'table' then
+            if type(value) == 'string' then
+                parts[i] = '"' .. tostring(key) .. '": "' .. tostring(value) .. '"'
+            else
+                parts[i] = '"' .. tostring(key) .. '": ' .. tostring(value)
+            end
+        else
+            local sub = {}
+            sub = NightScene.TableSort(value)
+            parts[i] = '"' .. tostring(key) .. '": {\n\t\t' .. table.concat(sub, ',\n\t\t') .. '\n\t}'
+        end
+        -- NightScene.Trace("[NightScene] TableSort parts[" .. tostring(i) .. "]='" .. tostring(parts[i]) .. "'")
+    end
+    return parts
+end
+
+function NightScene.EncodeSorted(list)
+    if not list then return nil end
+    -- NightScene.DebugTrace("[NightScene] EncodeSorted list ", list, " of size ", NightScene.TableSize(list))
+
+    -- Written by hand rather than json.encode: that puts all ids on a single line,
+    -- which is unreadable and undiffable if you ever want to
+    -- edit the file directly. Sorted so entries stay put between saves.
+
+    local parts = NightScene.TableSort(list)
+    -- NightScene.DebugTrace("[NightScene] EncodeSorted parts ", parts)
+
+    local content = "{\n\t" .. table.concat(parts, ",\n\t") .. "\n}\n"
+    -- NightScene.DebugTrace("[NightScene] EncodeSorted content ", content)
+
+    -- Do not write an empty config, it has to be an error
+    if NightScene.TableSize(parts) == 0 then
+        NightScene.Trace("[NightScene] EncodeSorted ERROR: Could not sort and encode the config file")
+        content = nil 
+    end
+	return content
+end
+
 -- ============================================================
 --  CET LIFECYCLE CALLBACKS
 -- ============================================================
 
 --- Called when CET initializes the mod.
 registerForEvent("onInit", function()
-    print("[NightScene] ========================================")
-    print("[NightScene]  NightScene Framework v" .. modVersion .. " (CET)")
-    print("[NightScene] ========================================")
+    NightScene.Print("[NightScene] ========================================")
+    NightScene.Print("[NightScene]  NightScene Framework v" .. modVersion .. " (CET)")
+    NightScene.Print("[NightScene] ========================================")
+
+    dofile("debug.lua")
 
     -- Load configuration
     Config.Load()
@@ -111,7 +240,9 @@ registerForEvent("onInit", function()
     end)
 
     isInitialized = true
-    print("[NightScene] CET module initialized")
+    NightScene.Print("[NightScene] CET module initialized")
+    if NightScene.Enabled()   then NightScene.Print("[NightScene] enabled")  else NightScene.Print("[NightScene] disabled")  end
+    if NightScene.DebugMode() then NightScene.Print("[NightScene] debug on") else NightScene.Print("[NightScene] debug off") end
 end)
 
 --- Called when CET shuts down.
@@ -121,7 +252,7 @@ registerForEvent("onShutdown", function()
         Config.Save()
     end
     pcall(FPCamera.Despawn)
-    print("[NightScene] CET module shut down")
+    NightScene.Print("[NightScene] CET module shut down")
 end)
 
 --- Called every frame to render ImGui.
@@ -176,7 +307,7 @@ registerForEvent("onUpdate", function(deltaTime)
         local hasPending = Game['NightSceneAPI::HasPendingWorkspotSpawn;']()
         if hasPending then
             Game['NightSceneAPI::ClearPendingWorkspotSpawn;']()
-            print("[NightScene] Scene started, spawning workspot...")
+            NightScene.Print("[NightScene] Scene started, spawning workspot...")
             Spawner.SpawnAndPlay()
         end
     end)
@@ -266,7 +397,7 @@ registerForEvent("onUpdate", function(deltaTime)
         if Spawner.workspotEntity or Spawner.vClone then
             local isActive = Game['NightSceneAPI::IsSceneActive;']()
             if not isActive then
-                print("[NightScene] Scene ended (auto-advance), triggering Lua cleanup...")
+                NightScene.Print("[NightScene] Scene ended (auto-advance), triggering Lua cleanup...")
                 sceneTick = 0
                 pcall(FPCamera.Despawn)
                 Spawner.Cleanup()
@@ -287,7 +418,7 @@ registerForEvent("onUpdate", function(deltaTime)
     if not waitingToLoad then
         playerDetectedTime = os.clock()
         waitingToLoad = true
-        print("[NightScene] Animations need loading, waiting 3s for framework init...")
+        NightScene.Print("[NightScene] Animations have to load, waiting 3s for initialization of the framework...")
         return
     end
 
@@ -297,23 +428,23 @@ registerForEvent("onUpdate", function(deltaTime)
     end
 
     waitingToLoad = false
-    print("[NightScene] Loading animation packs...")
+    NightScene.Print("[NightScene] Loading animation packs...")
 
     local loadSuccess, loadErr = pcall(function()
         AMMLoader.LoadAll()
     end)
     if not loadSuccess then
-        print("[NightScene] AMM Loader error: " .. tostring(loadErr))
+        NightScene.Print("[NightScene] AMM Loader error: " .. tostring(loadErr))
     end
 
     local postOk, postCount = pcall(Game['NightSceneAPI::GetAnimationCount;'])
-    print("[NightScene] Registered animations: " .. tostring(postCount))
+    NightScene.Print("[NightScene] Registered animations: " .. tostring(postCount))
     lastLoadedCount = postCount or 0
 
     -- Now that ScriptableSystem is confirmed ready, sync config from Lua to Redscript
     pcall(function()
         Config.SyncToRedscript()
-        print("[NightScene] Config synced to Redscript (post-load)")
+        NightScene.Print("[NightScene] Config synced to Redscript (post-load)")
     end)
 
     -- Apply saved animation enable/disable toggles now that animations are registered
@@ -371,7 +502,7 @@ registerHotkey("ns_interact", "NightScene: Interact with NPC", function()
     end)
 
     if not success then
-        print("[NightScene] Interaction error: " .. tostring(err))
+        NightScene.Print("[NightScene] Interaction error: " .. tostring(err))
     end
 end)
 
@@ -386,7 +517,7 @@ registerHotkey("ns_cancel_scene", "NightScene: Cancel Scene", function()
             Spawner.Cleanup()
             Game['NightSceneAPI::StopScene;']()
             UI.SetSceneControlsVisible(false)
-            print("[NightScene] Scene stopped")
+            NightScene.Print("[NightScene] Scene stopped")
         end
     end)
 end)
@@ -402,7 +533,7 @@ local function cycleAnimation(direction)
 
         local switched = Game['NightSceneAPI::CycleAnimation;Int32'](direction)
         if not switched then
-            print("[NightScene] No other compatible animation to switch to")
+            NightScene.Print("[NightScene] No other compatible animation to switch to")
         end
     end)
 end
@@ -441,7 +572,7 @@ registerHotkey("ns_speed_up", "NightScene: Speed Up", function()
         if NightSceneAPI.IsSceneActive() then
             -- Speed control via API
             NightSceneAPI.SetSpeed(1.25) -- TODO: track current speed in Lua
-            print("[NightScene] Speed up")
+            NightScene.Print("[NightScene] Speed up")
         end
     end)
 end)
@@ -453,7 +584,7 @@ registerHotkey("ns_speed_down", "NightScene: Speed Down", function()
     pcall(function()
         if NightSceneAPI.IsSceneActive() then
             NightSceneAPI.SetSpeed(0.75) -- TODO: track current speed in Lua
-            print("[NightScene] Speed down")
+            NightScene.Print("[NightScene] Speed down")
         end
     end)
 end)
@@ -466,7 +597,7 @@ registerHotkey("ns_camera_mode", "NightScene: Cycle Camera Mode", function()
     pcall(function()
         local mode = FPCamera.CycleMode()
         Game['NightSceneAPI::CycleCameraMode;']()
-        print("[NightScene] Camera mode -> " .. tostring(mode))
+        NightScene.Print("[NightScene] Camera mode -> " .. tostring(mode))
     end)
 end)
 
@@ -477,7 +608,7 @@ registerHotkey("ns_camera_preset", "NightScene: Next Camera Angle", function()
     pcall(function()
         local preset = FPCamera.NextPreset()
         Game['NightSceneAPI::NextCameraPreset;']()
-        print("[NightScene] Camera angle -> " .. tostring(preset))
+        NightScene.Print("[NightScene] Camera angle -> " .. tostring(preset))
     end)
 end)
 
@@ -495,7 +626,8 @@ end)
 
 -- NightSceneAPI is accessed as a global from CET (abstract class with static methods).
 
-print("[NightScene] CET init.lua loaded")
+NightScene.Log("")
+NightScene.Print("[NightScene] CET init.lua loaded")
 
 -- Public table, reachable from the CET console and other mods via
 -- GetMod("NightScene"). Mod globals are sandboxed per mod, so this is the only
@@ -512,9 +644,9 @@ return {
     EmergencyUnlock = function()
         local ok, err = pcall(Game['NightSceneAPI::EmergencyUnlock;'])
         if ok then
-            print("[NightScene] EmergencyUnlock: restrictions and invulnerability cleared")
+            NightScene.Print("[NightScene] EmergencyUnlock: restrictions and invulnerability cleared")
         else
-            print("[NightScene] EmergencyUnlock failed: " .. tostring(err))
+            NightScene.Print("[NightScene] EmergencyUnlock failed: " .. tostring(err))
         end
         -- The visual side lives in Lua, so undo it here too.
         pcall(Spawner.ShowPlayer)
@@ -527,11 +659,11 @@ return {
     ---     GetMod("NightScene").DebugShowV()
     DebugHideV = function()
         local added, total = Spawner.HidePlayer()
-        print("[NightScene] Hid V: " .. tostring(added) .. " new, "
+        NightScene.Print("[NightScene] Hid V: " .. tostring(added) .. " new, "
             .. tostring(total) .. " total components")
     end,
     DebugShowV = function()
-        print("[NightScene] Restored V: " .. tostring(Spawner.ShowPlayer()) .. " components")
+        NightScene.Print("[NightScene] Restored V: " .. tostring(Spawner.ShowPlayer()) .. " components")
     end,
 
     --- Show or hide the V clone's head during a scene. It is hidden
@@ -539,7 +671,7 @@ return {
     ---     GetMod("NightScene").DebugCloneHead(true)
     DebugCloneHead = function(visible)
         if not Spawner.vClone then
-            print("[NightScene] No V clone -- start a scene first")
+            NightScene.Print("[NightScene] No V clone -- start a scene first")
             return
         end
         return Spawner.SetCloneHeadVisible(Spawner.vClone, visible ~= false)

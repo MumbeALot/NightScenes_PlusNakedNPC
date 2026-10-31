@@ -61,31 +61,43 @@ function Config.Load()
         local ok, loaded = pcall(json.decode, content)
         if ok and type(loaded) == "table" then
             current = mergeWithDefaults(loaded)
-            print("[NakedNPC] Config loaded from " .. configPath)
+            NakedNPC.Print("[NakedNPC] Config loaded from " .. configPath)
         else
-            print("[NakedNPC] Config parse error, using defaults")
+            NakedNPC.Print("[NakedNPC] Config parse error, using defaults")
             current = deepCopy(defaults)
         end
     else
-        print("[NakedNPC] No config file found, using defaults")
+        NakedNPC.Print("[NakedNPC] No config file found, using defaults")
         current = deepCopy(defaults)
     end
     return current
 end
 
 function Config.Save()
-    local ok, encoded = pcall(json.encode, current)
-    if ok then
+	if not current then
+		NakedNPC.Print("[NakedNPC] ERROR: Undefined table to write as a config file")
+		return
+    else
+        -- NakedNPC.Trace("[NakedNPC] Saving a table of size " .. NakedNPC.TableSize(current))
+	end
+	
+    -- NakedNPC.Trace("[NakedNPC] There is a config to save")
+    -- NakedNPC.DebugTrace("[NakedNPC] current ", current, " of size ", NakedNPC.TableSize(current)) 
+	
+    local encoded = NakedNPC.EncodeSorted(current)
+    if encoded then
         -- Ensure data directory exists
         -- CET doesn't support os.execute; directory must exist already
         local file = io.open(configPath, "w")
         if file then
             file:write(encoded)
             file:close()
-            print("[NakedNPC] Config saved to " .. configPath)
+            NakedNPC.Print("[NakedNPC] Config saved to " .. configPath)
         else
-            print("[NakedNPC] ERROR: Could not write config file")
+            NakedNPC.Print("[NakedNPC] ERROR: Could not write the config file")
         end
+    else
+        NakedNPC.Print("[NakedNPC] ERROR: Could not encode the config file")
     end
 end
 
