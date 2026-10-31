@@ -332,6 +332,9 @@ public class NightSceneConfig extends IScriptable {
     // Master enable/disable
     public let enabled: Bool;
 
+    // debugMode for log traces
+    public let debugMode: Bool;
+
     // Default camera mode
     public let defaultCameraMode: NightSceneCameraMode;
 
@@ -380,6 +383,7 @@ public class NightSceneConfig extends IScriptable {
     public static func CreateDefault() -> ref<NightSceneConfig> {
         let cfg = new NightSceneConfig();
         cfg.enabled = true;
+        cfg.debugMode = false;
         cfg.defaultCameraMode = NightSceneCameraMode.FirstPerson;
         cfg.defeatEnabled = true;
         cfg.defeatHealthThreshold = 0.15;
